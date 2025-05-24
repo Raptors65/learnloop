@@ -35,7 +35,7 @@ async def fetch_topic_news(topics: List[str]) -> Dict[str, Any]:
                 "url": "http://localhost:8000/sse",
                 "timeout": 20
             },
-            client_session_timeout_seconds=5,
+            client_session_timeout_seconds=30,
         ) as server:
             
             # Create an agent with access to browser automation tools
