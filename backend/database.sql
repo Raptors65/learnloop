@@ -117,3 +117,41 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- News summaries table for storing topic news fetched via MCP
+create table if not exists public.news_summaries (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.user_profiles(id) on delete cascade not null,
+  topics text[] not null, -- Array of topic strings
+  summary_markdown text not null,
+  raw_results jsonb,
+  status text default 'pending' check (status in ('pending', 'processing', 'completed', 'failed')),
+  error_message text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Policies for news_summaries
+alter table public.news_summaries enable row level security;
+
+create policy "Users can view own news summaries" on public.news_summaries
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own news summaries" on public.news_summaries
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own news summaries" on public.news_summaries
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own news summaries" on public.news_summaries
+  for delete using (auth.uid() = user_id);
+
+-- Indexes for news_summaries
+create index if not exists news_summaries_user_id_idx on public.news_summaries(user_id);
+create index if not exists news_summaries_status_idx on public.news_summaries(status);
+create index if not exists news_summaries_created_at_idx on public.news_summaries(created_at desc);
+
+-- Trigger for updated_at on news_summaries
+create trigger handle_news_summaries_updated_at
+  before update on public.news_summaries
+  for each row execute function public.handle_updated_at();

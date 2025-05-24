@@ -7,9 +7,15 @@ import json
 import requests
 from supabase import create_client, Client
 from functools import wraps
+import threading
+import asyncio
+import uuid
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# Import our topic news agent
+from topic_news_agent import fetch_topic_news
 
 app = Flask(__name__)
 CORS(app)
@@ -48,6 +54,116 @@ def verify_token(f):
             return jsonify({'error': 'Invalid token'}), 401
     
     return decorated
+
+def process_news_summary_background(summary_id: str, topics: list, user_id: str):
+    """Background function to process news summary using MCP client"""
+    async def async_process():
+        try:
+            # Update status to processing
+            supabase.table('news_summaries').update({
+                'status': 'processing'
+            }).eq('id', summary_id).execute()
+            
+            # Fetch news using our MCP client
+            result = await fetch_topic_news(topics)
+            
+            if 'error' in result:
+                # Update with error
+                supabase.table('news_summaries').update({
+                    'status': 'failed',
+                    'error_message': result['error']
+                }).eq('id', summary_id).execute()
+            else:
+                # Update with successful results
+                supabase.table('news_summaries').update({
+                    'status': 'completed',
+                    'summary_markdown': result['summary_markdown'],
+                    'raw_results': result['raw_results']
+                }).eq('id', summary_id).execute()
+                
+        except Exception as e:
+            # Update with error
+            supabase.table('news_summaries').update({
+                'status': 'failed',
+                'error_message': str(e)
+            }).eq('id', summary_id).execute()
+    
+    def run_async():
+        # Create a new event loop for this thread
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(async_process())
+        finally:
+            loop.close()
+    
+    # Start the background task
+    thread = threading.Thread(target=run_async)
+    thread.daemon = True
+    thread.start()
+
+@app.route('/api/topic-news', methods=['POST'])
+@verify_token
+def create_topic_news_summary():
+    """Create a new topic news summary (starts background processing)"""
+    try:
+        data = request.get_json()
+        topics = data.get('topics', [])
+        
+        if not topics or not isinstance(topics, list):
+            return jsonify({'error': 'topics must be a non-empty array'}), 400
+        
+        # Create initial database record
+        summary_id = str(uuid.uuid4())
+        initial_record = {
+            'id': summary_id,
+            'user_id': request.user_id,
+            'topics': topics,
+            'summary_markdown': '',  # Will be updated by background process
+            'status': 'pending'
+        }
+        
+        supabase.table('news_summaries').insert(initial_record).execute()
+        
+        # Start background processing
+        process_news_summary_background(summary_id, topics, request.user_id)
+        
+        return jsonify({
+            'summary_id': summary_id,
+            'status': 'pending',
+            'message': 'News summary processing started. Check status using GET /api/topic-news/{summary_id}'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/topic-news/<summary_id>', methods=['GET'])
+@verify_token
+def get_topic_news_summary(summary_id):
+    """Get the status and results of a topic news summary"""
+    try:
+        response = supabase.table('news_summaries').select('*').eq('id', summary_id).eq('user_id', request.user_id).execute()
+        
+        if not response.data:
+            return jsonify({'error': 'Summary not found'}), 404
+        
+        summary = response.data[0]
+        return jsonify(summary)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/topic-news', methods=['GET'])
+@verify_token
+def list_topic_news_summaries():
+    """List all topic news summaries for the authenticated user"""
+    try:
+        response = supabase.table('news_summaries').select('*').eq('user_id', request.user_id).order('created_at', desc=True).execute()
+        return jsonify({'summaries': response.data})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/generate-subtopics', methods=['POST'])
 def generate_subtopics():
