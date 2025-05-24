@@ -5,6 +5,7 @@ import { useAuth } from '../components/AuthProvider';
 import AuthComponent from '../components/AuthComponent';
 import InterestInput from '../components/InterestInput';
 import LearningGraph from '../components/LearningGraph';
+import NewsModal from '../components/NewsModal';
 import { loadUserData } from '../lib/api';
 
 function HomePage() {
@@ -13,9 +14,12 @@ function HomePage() {
   const [showGraph, setShowGraph] = useState(false);
   const [isCheckingExistingData, setIsCheckingExistingData] = useState(true);
   const [hasExistingData, setHasExistingData] = useState(false);
+  const [newsModalOpen, setNewsModalOpen] = useState(false);
+  const [userTopics, setUserTopics] = useState<string[]>([]);
 
   const handleInterestsSubmit = (selectedInterests: string[]) => {
     setInterests(selectedInterests);
+    setUserTopics(selectedInterests);
     setShowGraph(true);
   };
 
@@ -38,6 +42,8 @@ function HomePage() {
           // User has existing data, go straight to graph
           setHasExistingData(true);
           setShowGraph(true);
+          // Extract topic names for news functionality
+          setUserTopics(userData.nodes.map(node => node.name));
         }
       } catch (error) {
         console.error('Error checking existing data:', error);
@@ -49,6 +55,19 @@ function HomePage() {
 
     checkExistingData();
   }, [user]);
+
+  // Refresh user topics when news modal opens (in case graph was updated)
+  const handleNewsClick = async () => {
+    if (user) {
+      try {
+        const userData = await loadUserData();
+        setUserTopics(userData.nodes.map(node => node.name));
+      } catch (error) {
+        console.error('Error refreshing topics:', error);
+      }
+    }
+    setNewsModalOpen(true);
+  };
 
   if (isCheckingExistingData) {
     return (
@@ -70,12 +89,20 @@ function HomePage() {
           </h1>
           <div className="flex items-center gap-4">
             {showGraph && (
-              <button
-                onClick={handleBack}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                ← Back to Interests
-              </button>
+              <>
+                <button
+                  onClick={handleNewsClick}
+                  className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  📰 Recent News
+                </button>
+                <button
+                  onClick={handleBack}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  ← Back to Interests
+                </button>
+              </>
             )}
             {user && (
               <div className="flex items-center gap-3">
@@ -102,6 +129,13 @@ function HomePage() {
           <LearningGraph initialInterests={interests} skipInitialLoad={hasExistingData} />
         )}
       </main>
+
+      {/* News Modal */}
+      <NewsModal 
+        isOpen={newsModalOpen} 
+        onClose={() => setNewsModalOpen(false)} 
+        availableTopics={userTopics} 
+      />
     </div>
   );
 }

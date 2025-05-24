@@ -17,6 +17,17 @@ interface Link {
   target: string;
 }
 
+interface NewsSummary {
+  id: string;
+  user_id: string;
+  topics: string[];
+  summary_markdown: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
+  created_at: string;
+  raw_results?: any;
+}
+
 export async function saveUserData(
   nodes: GraphNode[],
   metadata: Record<string, NodeMetadata>,
@@ -116,3 +127,82 @@ export async function loadUserData() {
     throw error;
   }
 }
+
+export async function createTopicNewsSummary(topics: string[]): Promise<{ summary_id: string; status: string; message: string }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('No valid session');
+    }
+
+    const response = await fetch('http://localhost:5001/api/topic-news', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ topics })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create news summary: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating news summary:', error);
+    throw error;
+  }
+}
+
+export async function getTopicNewsSummary(summaryId: string): Promise<NewsSummary> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('No valid session');
+    }
+
+    const response = await fetch(`http://localhost:5001/api/topic-news/${summaryId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get news summary: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting news summary:', error);
+    throw error;
+  }
+}
+
+export async function listTopicNewsSummaries(): Promise<{ summaries: NewsSummary[] }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('No valid session');
+    }
+
+    const response = await fetch('http://localhost:5001/api/topic-news', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list news summaries: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error listing news summaries:', error);
+    throw error;
+  }
+}
+
+export type { GraphNode, NodeMetadata, Link, NewsSummary };

@@ -13,6 +13,7 @@ interface ContextMenuProps {
   node: Node;
   onStartConversation: () => void;
   onViewNotes: () => void;
+  onGetNews: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -23,6 +24,7 @@ export default function ContextMenu({
   node, 
   onStartConversation, 
   onViewNotes, 
+  onGetNews,
   onDelete, 
   onClose 
 }: ContextMenuProps) {
@@ -58,6 +60,14 @@ export default function ContextMenu({
       >
         <span className="text-lg">📝</span>
         <span className="text-gray-700">View Notes</span>
+      </button>
+      
+      <button
+        onClick={onGetNews}
+        className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+      >
+        <span className="text-lg">📰</span>
+        <span className="text-gray-700">Get Recent News</span>
       </button>
       
       <div className="border-t border-gray-100 mt-1 pt-1">
