@@ -12,6 +12,7 @@ function HomePage() {
   const [interests, setInterests] = useState<string[]>([]);
   const [showGraph, setShowGraph] = useState(false);
   const [isCheckingExistingData, setIsCheckingExistingData] = useState(true);
+  const [hasExistingData, setHasExistingData] = useState(false);
 
   const handleInterestsSubmit = (selectedInterests: string[]) => {
     setInterests(selectedInterests);
@@ -22,6 +23,43 @@ function HomePage() {
     setShowGraph(false);
     setInterests([]);
   };
+
+  // Check if user has existing data when they sign in
+  useEffect(() => {
+    const checkExistingData = async () => {
+      if (!user) {
+        setIsCheckingExistingData(false);
+        return;
+      }
+
+      try {
+        const userData = await loadUserData();
+        if (userData.nodes.length > 0) {
+          // User has existing data, go straight to graph
+          setHasExistingData(true);
+          setShowGraph(true);
+        }
+      } catch (error) {
+        console.error('Error checking existing data:', error);
+        // If error loading, show interest input (new user flow)
+      } finally {
+        setIsCheckingExistingData(false);
+      }
+    };
+
+    checkExistingData();
+  }, [user]);
+
+  if (isCheckingExistingData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-700">Loading your learning graph...</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
@@ -61,7 +99,7 @@ function HomePage() {
         {!showGraph ? (
           <InterestInput onSubmit={handleInterestsSubmit} />
         ) : (
-          <LearningGraph initialInterests={interests} />
+          <LearningGraph initialInterests={interests} skipInitialLoad={hasExistingData} />
         )}
       </main>
     </div>

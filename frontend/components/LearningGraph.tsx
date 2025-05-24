@@ -13,7 +13,7 @@ import { saveUserData, loadUserData } from '../lib/api';
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+    <div className="w-full min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
         <p className="text-gray-600">Loading learning graph...</p>
@@ -41,9 +41,10 @@ interface Link {
 
 interface LearningGraphProps {
   initialInterests: string[];
+  skipInitialLoad?: boolean;
 }
 
-export default function LearningGraph({ initialInterests }: LearningGraphProps) {
+export default function LearningGraph({ initialInterests, skipInitialLoad = false }: LearningGraphProps) {
   const { user } = useAuth();
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: Link[] }>({
     nodes: [],
@@ -85,36 +86,43 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
       try {
         setIsLoading(true);
         
-        // Try to load existing user data
-        const userData = await loadUserData();
-        
-        if (userData.nodes.length > 0) {
-          // User has existing data
+        if (skipInitialLoad) {
+          // Coming from home page after detecting existing data, just load it
+          const userData = await loadUserData();
           setGraphData({ nodes: userData.nodes, links: userData.links });
           setNodeMetadata(userData.metadata);
         } else {
-          // First time user - initialize with interests
-          const initialNodes: GraphNode[] = initialInterests.map((interest, index) => ({
-            id: crypto.randomUUID(),
-            name: interest,
-            color: '#8b5cf6',
-            size: 5
-          }));
+          // Try to load existing user data
+          const userData = await loadUserData();
           
-          const initialMetadata: Record<string, NodeMetadata> = {};
-          initialNodes.forEach(node => {
-            initialMetadata[node.id] = {
-              expanded: false,
-              notes: ''
-            };
-          });
-          
-          setGraphData({ nodes: initialNodes, links: [] });
-          setNodeMetadata(initialMetadata);
-          
-          // Save initial data
-          if (initialNodes.length > 0) {
-            await saveUserData(initialNodes, initialMetadata, []);
+          if (userData.nodes.length > 0) {
+            // User has existing data
+            setGraphData({ nodes: userData.nodes, links: userData.links });
+            setNodeMetadata(userData.metadata);
+          } else {
+            // First time user - initialize with interests
+            const initialNodes: GraphNode[] = initialInterests.map((interest, index) => ({
+              id: crypto.randomUUID(),
+              name: interest,
+              color: '#8b5cf6',
+              size: 5
+            }));
+            
+            const initialMetadata: Record<string, NodeMetadata> = {};
+            initialNodes.forEach(node => {
+              initialMetadata[node.id] = {
+                expanded: false,
+                notes: ''
+              };
+            });
+            
+            setGraphData({ nodes: initialNodes, links: [] });
+            setNodeMetadata(initialMetadata);
+            
+            // Save initial data
+            if (initialNodes.length > 0) {
+              await saveUserData(initialNodes, initialMetadata, []);
+            }
           }
         }
       } catch (error) {
@@ -143,7 +151,7 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
     };
 
     initializeData();
-  }, [user, initialInterests]);
+  }, [user, initialInterests, skipInitialLoad]);
 
   const expandNode = useCallback(async (node: GraphNode) => {
     if (nodeMetadata[node.id]?.expanded) return;
@@ -183,9 +191,9 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
       });
 
       // Create links from parent to subtopics
-      const newLinks: Link[] = subtopics.map((subtopic: string, index: number) => ({
+      const newLinks: Link[] = newNodes.map((newNode) => ({
         source: node.id,
-        target: `${node.id}-sub-${timestamp}-${index}`
+        target: newNode.id
       }));
 
       // Update graph data
@@ -321,9 +329,9 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
             };
           });
 
-          const newLinks: Link[] = analysis.suggested_subtopics.map((subtopic: string, index: number) => ({
+          const newLinks: Link[] = newNodes.map((newNode) => ({
             source: voiceConversation.nodeId!,
-            target: `${voiceConversation.nodeId}-voice-${timestamp}-${index}`
+            target: newNode.id
           }));
 
           setGraphData(prev => ({
@@ -375,7 +383,7 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
   // Auto-save data when it changes
   useEffect(() => {
     const saveData = async () => {
-      if (!user || isLoading || graphData.nodes.length === 0) return;
+      if (!user || isLoading || graphData.nodes.length === 0 || saveStatus === 'saving') return;
       
       try {
         setSaveStatus('saving');
@@ -399,7 +407,7 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+      <div className="w-full min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your learning graph...</p>
@@ -447,7 +455,7 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
       {/* Floating Add Button */}
       <button
         onClick={() => setAddTopicModal(true)}
-        className="absolute bottom-6 right-6 z-10 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group"
+        className="fixed bottom-6 right-6 z-10 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group"
         title="Add new topics"
       >
         <span className="text-2xl group-hover:scale-110 transition-transform">+</span>

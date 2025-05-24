@@ -29,11 +29,20 @@ export async function saveUserData(
       throw new Error('No valid session');
     }
     
-    // Combine nodes with metadata for backend
-    const topics = nodes.map(node => ({
-      ...node,
+    // Clean nodes - only keep the properties we need
+    const cleanTopics = nodes.map(node => ({
+      id: node.id,
+      name: node.name,
+      color: node.color,
+      size: node.size,
       expanded: metadata[node.id]?.expanded || false,
       notes: metadata[node.id]?.notes || ''
+    }));
+
+    // Clean links - only keep source and target IDs
+    const cleanLinks = links.map(link => ({
+      source: typeof link.source === 'object' ? link.source.id : link.source,
+      target: typeof link.target === 'object' ? link.target.id : link.target
     }));
 
     const response = await fetch('http://localhost:5001/api/user/topics', {
@@ -43,8 +52,8 @@ export async function saveUserData(
         'Authorization': `Bearer ${session.access_token}`
       },
       body: JSON.stringify({
-        topics,
-        relationships: links
+        topics: cleanTopics,
+        relationships: cleanLinks
       })
     });
 

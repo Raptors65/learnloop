@@ -211,14 +211,10 @@ def save_user_topics():
         topics = data.get('topics', [])
         relationships = data.get('relationships', [])
         
-        # Clear existing data
-        supabase.table('topic_relationships').delete().eq('user_id', request.user_id).execute()
-        supabase.table('topics').delete().eq('user_id', request.user_id).execute()
-        
-        # Insert topics
-        topics_to_insert = []
+        # Use upsert instead of delete/insert to handle updates better
+        topics_to_upsert = []
         for topic in topics:
-            topics_to_insert.append({
+            topics_to_upsert.append({
                 'id': topic['id'],
                 'user_id': request.user_id,
                 'name': topic['name'],
@@ -228,10 +224,13 @@ def save_user_topics():
                 'notes': topic.get('notes', '')
             })
         
-        if topics_to_insert:
-            supabase.table('topics').insert(topics_to_insert).execute()
+        if topics_to_upsert:
+            # Clear existing topics first
+            supabase.table('topics').delete().eq('user_id', request.user_id).execute()
+            # Insert new topics
+            supabase.table('topics').insert(topics_to_upsert).execute()
         
-        # Insert relationships
+        # Handle relationships
         relationships_to_insert = []
         for rel in relationships:
             relationships_to_insert.append({
@@ -241,10 +240,16 @@ def save_user_topics():
             })
         
         if relationships_to_insert:
+            # Clear existing relationships first
+            supabase.table('topic_relationships').delete().eq('user_id', request.user_id).execute()
+            # Insert new relationships
             supabase.table('topic_relationships').insert(relationships_to_insert).execute()
         
         return jsonify({'success': True})
     except Exception as e:
+        print(f"Save error: {e}")
+        print(f"Topics data: {topics}")
+        print(f"Relationships data: {relationships}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
