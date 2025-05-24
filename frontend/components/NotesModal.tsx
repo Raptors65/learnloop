@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 interface Node {
   id: string;
@@ -71,10 +72,8 @@ export default function NotesModal({ node, onSave, onClose }: NotesModalProps) {
           ) : (
             <div className="min-h-[300px]">
               {notes ? (
-                <div className="prose prose-sm max-w-none">
-                  <pre className="whitespace-pre-wrap font-sans text-gray-700 leading-relaxed">
-                    {notes}
-                  </pre>
+                <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-strong:text-gray-800 prose-ul:text-gray-700 prose-p:text-gray-700">
+                  <ReactMarkdown>{notes}</ReactMarkdown>
                 </div>
               ) : (
                 <div className="text-center py-12">

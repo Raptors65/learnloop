@@ -1,4 +1,5 @@
 import os
+import sys
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from anthropic import Anthropic
@@ -78,23 +79,31 @@ Transcript:
 
 Return your response as JSON with this structure:
 {{
-    "summary": "Educational notes about {parent_topic} based on the conversation content. Write this as actual study notes about the topic, not as a summary of the conversation. Start directly with facts about {parent_topic} (e.g., '{parent_topic} is...' or 'Key aspects of {parent_topic} include...')",
-    "key_points": ["Important fact 1", "Important fact 2", "Important fact 3"],
+    "summary": ["Concise bullet point about {parent_topic}", "Another key insight", "Third important concept"],
+    "key_points": ["Specific detail 1", "Specific detail 2", "Specific detail 3"],
     "suggested_subtopics": ["New subtopic 1", "New subtopic 2"]
 }}
 
 Guidelines:
-- The "summary" should read like educational content about {parent_topic}, not like "In this conversation we discussed..."
-- Key points should be factual information about the topic
-- Suggested_subtopics should only include topics that were specifically mentioned and would be valuable as separate learning nodes
+- The "summary" should be 3-5 concise bullet points covering the main concepts about {parent_topic}
+- Write as educational content, not conversation summary (avoid "we discussed")
+- Each summary bullet should be 1-2 sentences max
+- Key points should be more specific factual details
+- Use Markdown formatting (e.g., **bold**, *italic*, `code`) inside each bullet pointwhere appropriate
+- Suggested_subtopics should only include topics specifically mentioned that would be valuable as separate learning nodes
 - If no new subtopics emerged, return an empty array
 
 Only return the JSON, no other text."""
             }]
         )
-        
-        # Parse the response as JSON
-        analysis = json.loads(message.content[0].text.strip())
+
+        first_brace = message.content[0].text.strip().find('{')
+        last_brace = message.content[0].text.strip().rfind('}')
+
+        if first_brace == -1 or last_brace == -1:
+            return jsonify({'error': 'Failed to parse AI response'}), 500
+
+        analysis = json.loads(message.content[0].text.strip()[first_brace:last_brace+1])
         
         return jsonify(analysis)
         
@@ -124,6 +133,7 @@ def create_voice_session():
 Your role:
 - Start by giving an interesting 30-60 second overview of {topic}
 - Speak in a conversational, podcast-like manner
+- Speak quickly, like the podcast is at 2x speed
 - Allow the user to interrupt with questions at any time
 - Keep responses engaging but not too long (30-60 seconds each)
 - If the user asks to explore a specific aspect, dive deeper into that area

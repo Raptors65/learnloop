@@ -238,11 +238,13 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
         const analysis = await response.json();
         
         // Update the node metadata with generated notes
+        const formattedNotes = `## Summary\n${analysis.summary.map((point: string) => `- ${point}`).join('\n')}\n\n## Key Points\n${analysis.key_points.map((point: string) => `- ${point}`).join('\n')}`;
+        
         setNodeMetadata(prev => ({
           ...prev,
           [voiceConversation.nodeId!]: {
             ...prev[voiceConversation.nodeId!],
-            notes: `${analysis.summary}\n\nKey Points:\n${analysis.key_points.join('\n• ')}`
+            notes: formattedNotes
           }
         }));
 
