@@ -1,0 +1,3 @@
+[submodule "dex-mcp"]
+	path = dex-mcp
+	url = git@github.com:kevinrgu/dex-mcp.git
