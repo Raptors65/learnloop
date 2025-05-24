@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import ContextMenu from './ContextMenu';
 import VoiceConversation from './VoiceConversation';
 import NotesModal from './NotesModal';
+import AddTopicModal from './AddTopicModal';
 
 // Dynamic import to avoid SSR issues
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -65,6 +66,8 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
     visible: boolean;
     nodeId: string | null;
   }>({ visible: false, nodeId: null });
+  
+  const [addTopicModal, setAddTopicModal] = useState(false);
   
   const [lastClickTime, setLastClickTime] = useState(0);
   const [lastClickedNode, setLastClickedNode] = useState<string | null>(null);
@@ -291,6 +294,34 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
     setVoiceConversation({ active: false, topic: '', nodeId: null });
   };
 
+  const handleAddTopics = (topics: string[]) => {
+    const timestamp = Date.now();
+    const newNodes: GraphNode[] = topics.map((topic, index) => ({
+      id: `manual-${timestamp}-${index}`,
+      name: topic,
+      color: '#8b5cf6',
+      size: 5
+    }));
+
+    const newMetadata: Record<string, NodeMetadata> = {};
+    newNodes.forEach(node => {
+      newMetadata[node.id] = {
+        expanded: false,
+        notes: ''
+      };
+    });
+
+    setGraphData(prev => ({
+      nodes: [...prev.nodes, ...newNodes],
+      links: prev.links
+    }));
+
+    setNodeMetadata(prev => ({
+      ...prev,
+      ...newMetadata
+    }));
+  };
+
   const handleBackgroundClick = useCallback(() => {
     setContextMenu(prev => ({ ...prev, visible: false }));
   }, []);
@@ -306,6 +337,15 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
           <li>• <strong>Scroll</strong> to zoom in/out</li>
         </ul>
       </div>
+
+      {/* Floating Add Button */}
+      <button
+        onClick={() => setAddTopicModal(true)}
+        className="absolute bottom-6 right-6 z-10 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group"
+        title="Add new topics"
+      >
+        <span className="text-2xl group-hover:scale-110 transition-transform">+</span>
+      </button>
 
       <div className="w-full h-full">
         <ForceGraph2D
@@ -414,6 +454,13 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
           }}
           onSave={handleSaveNotes}
           onClose={() => setNotesModal({ visible: false, nodeId: null })}
+        />
+      )}
+
+      {addTopicModal && (
+        <AddTopicModal
+          onAdd={handleAddTopics}
+          onClose={() => setAddTopicModal(false)}
         />
       )}
     </div>
