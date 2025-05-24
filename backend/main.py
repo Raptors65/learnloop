@@ -5,6 +5,8 @@ from flask_cors import CORS
 from anthropic import Anthropic
 import json
 import requests
+from supabase import create_client, Client
+from functools import wraps
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -12,10 +14,40 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Initialize Claude client
+# Initialize clients
 client = Anthropic(
     api_key=os.environ.get("ANTHROPIC_API_KEY")
 )
+
+# Initialize Supabase client
+supabase: Client = create_client(
+    os.environ.get("SUPABASE_URL"),
+    os.environ.get("SUPABASE_KEY")
+)
+
+def verify_token(f):
+    """Decorator to verify Supabase JWT token"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({'error': 'Authorization header required'}), 401
+        
+        try:
+            token = auth_header.split(' ')[1]  # Remove 'Bearer ' prefix
+            
+            # Verify the token with Supabase
+            response = supabase.auth.get_user(token)
+            if response.user:
+                request.user_id = response.user.id
+                return f(*args, **kwargs)
+            else:
+                return jsonify({'error': 'Invalid token'}), 401
+        except Exception as e:
+            print(f"Auth error: {e}")
+            return jsonify({'error': 'Invalid token'}), 401
+    
+    return decorated
 
 @app.route('/api/generate-subtopics', methods=['POST'])
 def generate_subtopics():
@@ -148,6 +180,70 @@ Remember: This is an interactive learning conversation, not a lecture. Be enthus
         else:
             return jsonify({'error': 'Failed to create session', 'details': response.text}), response.status_code
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/user/topics', methods=['GET'])
+@verify_token
+def get_user_topics():
+    """Get all topics for the authenticated user"""
+    try:
+        response = supabase.table('topics').select('*').eq('user_id', request.user_id).execute()
+        topics = response.data
+        
+        # Get relationships
+        relationships_response = supabase.table('topic_relationships').select('*').eq('user_id', request.user_id).execute()
+        relationships = relationships_response.data
+        
+        return jsonify({
+            'topics': topics,
+            'relationships': relationships
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/user/topics', methods=['POST'])
+@verify_token
+def save_user_topics():
+    """Save topics and relationships for the authenticated user"""
+    try:
+        data = request.get_json()
+        topics = data.get('topics', [])
+        relationships = data.get('relationships', [])
+        
+        # Clear existing data
+        supabase.table('topic_relationships').delete().eq('user_id', request.user_id).execute()
+        supabase.table('topics').delete().eq('user_id', request.user_id).execute()
+        
+        # Insert topics
+        topics_to_insert = []
+        for topic in topics:
+            topics_to_insert.append({
+                'id': topic['id'],
+                'user_id': request.user_id,
+                'name': topic['name'],
+                'color': topic['color'],
+                'size': topic['size'],
+                'expanded': topic.get('expanded', False),
+                'notes': topic.get('notes', '')
+            })
+        
+        if topics_to_insert:
+            supabase.table('topics').insert(topics_to_insert).execute()
+        
+        # Insert relationships
+        relationships_to_insert = []
+        for rel in relationships:
+            relationships_to_insert.append({
+                'user_id': request.user_id,
+                'source_topic_id': rel['source'],
+                'target_topic_id': rel['target']
+            })
+        
+        if relationships_to_insert:
+            supabase.table('topic_relationships').insert(relationships_to_insert).execute()
+        
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

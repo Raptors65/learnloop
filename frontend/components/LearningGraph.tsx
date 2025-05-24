@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useAuth } from './AuthProvider';
 import ContextMenu from './ContextMenu';
 import VoiceConversation from './VoiceConversation';
 import NotesModal from './NotesModal';
 import AddTopicModal from './AddTopicModal';
+import { saveUserData, loadUserData } from '../lib/api';
 
 // Dynamic import to avoid SSR issues
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -42,6 +44,7 @@ interface LearningGraphProps {
 }
 
 export default function LearningGraph({ initialInterests }: LearningGraphProps) {
+  const { user } = useAuth();
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; links: Link[] }>({
     nodes: [],
     links: []
@@ -49,6 +52,8 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
   
   // Store node metadata separately to avoid breaking graph structure
   const [nodeMetadata, setNodeMetadata] = useState<Record<string, NodeMetadata>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -72,26 +77,73 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
   const [lastClickTime, setLastClickTime] = useState(0);
   const [lastClickedNode, setLastClickedNode] = useState<string | null>(null);
 
-  // Initialize nodes from interests
+  // Load user data or initialize with interests
   useEffect(() => {
-    const initialNodes: GraphNode[] = initialInterests.map((interest, index) => ({
-      id: `interest-${index}`,
-      name: interest,
-      color: '#8b5cf6',
-      size: 5
-    }));
-    
-    const initialMetadata: Record<string, NodeMetadata> = {};
-    initialNodes.forEach(node => {
-      initialMetadata[node.id] = {
-        expanded: false,
-        notes: ''
-      };
-    });
-    
-    setGraphData({ nodes: initialNodes, links: [] });
-    setNodeMetadata(initialMetadata);
-  }, [initialInterests]);
+    const initializeData = async () => {
+      if (!user) return;
+      
+      try {
+        setIsLoading(true);
+        
+        // Try to load existing user data
+        const userData = await loadUserData();
+        
+        if (userData.nodes.length > 0) {
+          // User has existing data
+          setGraphData({ nodes: userData.nodes, links: userData.links });
+          setNodeMetadata(userData.metadata);
+        } else {
+          // First time user - initialize with interests
+          const initialNodes: GraphNode[] = initialInterests.map((interest, index) => ({
+            id: crypto.randomUUID(),
+            name: interest,
+            color: '#8b5cf6',
+            size: 5
+          }));
+          
+          const initialMetadata: Record<string, NodeMetadata> = {};
+          initialNodes.forEach(node => {
+            initialMetadata[node.id] = {
+              expanded: false,
+              notes: ''
+            };
+          });
+          
+          setGraphData({ nodes: initialNodes, links: [] });
+          setNodeMetadata(initialMetadata);
+          
+          // Save initial data
+          if (initialNodes.length > 0) {
+            await saveUserData(initialNodes, initialMetadata, []);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        // Fallback to initial interests if loading fails
+        const initialNodes: GraphNode[] = initialInterests.map((interest, index) => ({
+          id: crypto.randomUUID(),
+          name: interest,
+          color: '#8b5cf6',
+          size: 5
+        }));
+        
+        const initialMetadata: Record<string, NodeMetadata> = {};
+        initialNodes.forEach(node => {
+          initialMetadata[node.id] = {
+            expanded: false,
+            notes: ''
+          };
+        });
+        
+        setGraphData({ nodes: initialNodes, links: [] });
+        setNodeMetadata(initialMetadata);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeData();
+  }, [user, initialInterests]);
 
   const expandNode = useCallback(async (node: GraphNode) => {
     if (nodeMetadata[node.id]?.expanded) return;
@@ -115,7 +167,7 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
       
       // Create new nodes for subtopics
       const newNodes: GraphNode[] = subtopics.map((subtopic: string, index: number) => ({
-        id: `${node.id}-sub-${timestamp}-${index}`,
+        id: crypto.randomUUID(),
         name: subtopic,
         color: '#3b82f6',
         size: 3
@@ -253,9 +305,8 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
 
         // Create new nodes for suggested subtopics if any
         if (analysis.suggested_subtopics && analysis.suggested_subtopics.length > 0) {
-          const timestamp = Date.now();
           const newNodes: GraphNode[] = analysis.suggested_subtopics.map((subtopic: string, index: number) => ({
-            id: `${voiceConversation.nodeId}-voice-${timestamp}-${index}`,
+            id: crypto.randomUUID(),
             name: subtopic,
             color: '#10b981',
             size: 3
@@ -295,9 +346,8 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
   };
 
   const handleAddTopics = (topics: string[]) => {
-    const timestamp = Date.now();
     const newNodes: GraphNode[] = topics.map((topic, index) => ({
-      id: `manual-${timestamp}-${index}`,
+      id: crypto.randomUUID(),
       name: topic,
       color: '#8b5cf6',
       size: 5
@@ -322,9 +372,41 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
     }));
   };
 
+  // Auto-save data when it changes
+  useEffect(() => {
+    const saveData = async () => {
+      if (!user || isLoading || graphData.nodes.length === 0) return;
+      
+      try {
+        setSaveStatus('saving');
+        await saveUserData(graphData.nodes, nodeMetadata, graphData.links);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (error) {
+        console.error('Error saving data:', error);
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      }
+    };
+
+    const debounceTimer = setTimeout(saveData, 1000);
+    return () => clearTimeout(debounceTimer);
+  }, [graphData, nodeMetadata, user, isLoading]);
+
   const handleBackgroundClick = useCallback(() => {
     setContextMenu(prev => ({ ...prev, visible: false }));
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your learning graph...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-screen" onClick={handleBackgroundClick}>
@@ -337,6 +419,30 @@ export default function LearningGraph({ initialInterests }: LearningGraphProps) 
           <li>• <strong>Scroll</strong> to zoom in/out</li>
         </ul>
       </div>
+
+      {/* Save Status Indicator */}
+      {saveStatus !== 'idle' && (
+        <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-2">
+          {saveStatus === 'saving' && (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              <span className="text-sm text-gray-600">Saving...</span>
+            </>
+          )}
+          {saveStatus === 'saved' && (
+            <>
+              <div className="text-green-500">✓</div>
+              <span className="text-sm text-gray-600">Saved</span>
+            </>
+          )}
+          {saveStatus === 'error' && (
+            <>
+              <div className="text-red-500">⚠</div>
+              <span className="text-sm text-red-600">Save failed</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Floating Add Button */}
       <button

@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../components/AuthProvider';
+import AuthComponent from '../components/AuthComponent';
 import InterestInput from '../components/InterestInput';
 import LearningGraph from '../components/LearningGraph';
+import { loadUserData } from '../lib/api';
 
-export default function Home() {
+function HomePage() {
+  const { user, signOut } = useAuth();
   const [interests, setInterests] = useState<string[]>([]);
   const [showGraph, setShowGraph] = useState(false);
+  const [isCheckingExistingData, setIsCheckingExistingData] = useState(true);
 
   const handleInterestsSubmit = (selectedInterests: string[]) => {
     setInterests(selectedInterests);
@@ -25,14 +30,30 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-gray-800">
             Learn<span className="text-blue-600">Loop</span>
           </h1>
-          {showGraph && (
-            <button
-              onClick={handleBack}
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              ← Back to Interests
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            {showGraph && (
+              <button
+                onClick={handleBack}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                ← Back to Interests
+              </button>
+            )}
+            {user && (
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                  {user.email?.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-sm text-gray-700">{user.email}</span>
+                <button
+                  onClick={() => signOut()}
+                  className="px-3 py-1 text-xs text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -44,5 +65,13 @@ export default function Home() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <AuthComponent>
+      <HomePage />
+    </AuthComponent>
   );
 }
